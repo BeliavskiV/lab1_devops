@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    container_name: library-app-prod
+    ports:
+      - "8002:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    restart: always
+    networks:
+      - library-net
+
+networks:
+  library-net:
+    driver: bridge

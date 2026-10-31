@@ -1,0 +1,73 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: library-postgres-local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - dbdata_local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - library-net
+
+  liquibase:
+    image: liquibase/liquibase:latest
+    container_name: library-liquibase-local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - LIQUIBASE_COMMAND_URL=jdbc:postgresql://db:5432/${POSTGRES_DB}
+      - LIQUIBASE_COMMAND_USERNAME=${POSTGRES_USER}
+      - LIQUIBASE_COMMAND_PASSWORD=${POSTGRES_PASSWORD}
+      - LIQUIBASE_COMMAND_CHANGELOG_FILE=changelog.xml
+      - LIQUIBASE_COMMAND_SEARCH_PATH=/liquibase/changelog
+    volumes:
+      - ./changelog:/liquibase/changelog
+      - ./drivers/postgresql.jar:/liquibase/lib/postgresql.jar
+    command: ["update"]
+    networks:
+      - library-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: library-ollama-local
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - library-net
+
+  app:
+    build: .
+    container_name: library-app-local
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      db:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+    networks:
+      - library-net
+
+volumes:
+  dbdata_local:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  library-net:
+    driver: bridge

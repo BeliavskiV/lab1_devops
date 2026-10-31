@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: library-postgres-db
+    environment:
+      POSTGRES_DB: library_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d library_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - library-net
+
+  liquibase:
+    image: liquibase/liquibase:latest
+    container_name: library-liquibase-migration
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - LIQUIBASE_COMMAND_URL=jdbc:postgresql://db:5432/library_db
+      - LIQUIBASE_COMMAND_USERNAME=postgres
+      - LIQUIBASE_COMMAND_PASSWORD=postgres
+      - LIQUIBASE_COMMAND_CHANGELOG_FILE=changelog.xml
+    volumes:
+      - ./changelog:/liquibase/changelog
+      - ./drivers/postgresql.jar:/liquibase/lib/postgresql.jar
+    command: ["update"]
+    networks:
+      - library-net
+
+  app:
+    build: .
+    container_name: library-fastapi-app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/library_db
+    depends_on:
+      db:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+    networks:
+      - library-net
+
+volumes:
+  dbdata:
+
+networks:
+  library-net:
+    driver: bridge
